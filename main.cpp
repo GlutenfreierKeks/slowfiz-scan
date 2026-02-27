@@ -1,5 +1,3 @@
-
-
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -56,7 +54,6 @@ static fs::path GetResultPath() {
     return dir / "result.txt";
 }
 
-
 static std::string GetDailyCode() {
     time_t t = time(nullptr); tm lt{};
     localtime_s(&lt, &t);
@@ -100,13 +97,11 @@ struct ScanResult {
     std::string summary;
 };
 
-
 enum class Screen { TUTORIAL, IGN, MAIN, RESCAN_CODE, SCREENSHOT };
-
 
 struct {
     Screen screen = Screen::TUTORIAL;
-    int    tutPage = 0;   // 0,1,2
+    int    tutPage = 0;
 
     char   ign[48] = {};
     bool   ignSet = false;
@@ -124,15 +119,12 @@ struct {
 
     bool   autoTab = false;
 
-    // Rescan code gate
     char   codeInput[32] = {};
     bool   codeFail = false;
 
-    // Hidden config (Ctrl+Shift+Alt+C)
     bool   showCfg = false;
     float  t = 0.0f;
 } G;
-
 
 static std::string Lower(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), ::tolower); return s;
@@ -161,9 +153,6 @@ static std::string RiskLabel(Risk r) {
     }
 }
 
-// ============================================================
-// SAVE RESULT
-// ============================================================
 static void SaveResult(const ScanResult& r) {
     fs::path p = GetResultPath();
     std::ofstream f(p);
@@ -192,10 +181,6 @@ static void SaveResult(const ScanResult& r) {
     f << "SCANNED\n";
 }
 
-// ============================================================
-// LOAD PREVIOUS RESULT
-// Returns true if a completed scan file exists
-// ============================================================
 static bool LoadPrevResult() {
     std::string raw = ReadFileTxt(GetResultPath());
     if (raw.empty() || raw.find("SCANNED") == std::string::npos) return false;
@@ -223,7 +208,6 @@ static bool LoadPrevResult() {
     else if (vrd == "CLEAN")             r.risk = Risk::CLEAN;
     else r.risk = Risk::NONE;
 
-    // Parse findings lines: [TYPE] VERDICT | LAUNCHER | DETAIL
     std::istringstream ss(raw); std::string line;
     while (std::getline(ss, line)) {
         if (line.empty() || line[0] != '[') continue;
@@ -247,9 +231,6 @@ static bool LoadPrevResult() {
     return true;
 }
 
-// ============================================================
-// MOD BLOCK PARSER  (unchanged from v3.1)
-// ============================================================
 static std::vector<std::string> ExtractModBlock(const std::string& raw) {
     std::vector<std::string> mods;
     std::string marker = "]: Loading ";
@@ -287,9 +268,6 @@ static bool IsChatLine(const std::string& line) {
         (CI(line, "/INFO]") && CI(line, "[CHAT]"));
 }
 
-// ============================================================
-// SCAN ENGINE  (v3.1 logic, no webhook)
-// ============================================================
 static void DoScan() {
     auto setP = [](float p, const std::string& m) {
         std::lock_guard<std::mutex> lk(G.mtx); G.prog = p; G.progMsg = m; };
@@ -349,7 +327,6 @@ static void DoScan() {
         AddLog("[SCAN] " + launcher + " → " + dir.string());
         setP(prog, "Scanning " + launcher + "...");
 
-        // LOG SCAN
         fs::path ld = dir / "logs";
         if (fs::exists(ld)) {
             std::error_code ec;
@@ -407,7 +384,6 @@ static void DoScan() {
             }
         }
 
-        // MOD FILE SCAN
         fs::path md = dir / "mods";
         if (fs::exists(md)) {
             std::error_code ec;
@@ -420,7 +396,7 @@ static void DoScan() {
                         std::string det = "Mod file: " + e.path().filename().string();
                         AddLog("[ALERT] " + det);
                         r.findings.push_back({ launcher,"MOD_FILE",det,
-                            e.path().string(),false }); // always MAYBE
+                            e.path().string(),false });
                     }
                 }
             }
@@ -429,7 +405,6 @@ static void DoScan() {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    // Certainty: MOD_LOG + slowfiz = EVIDENCE
     for (auto& f : r.findings)
         if (f.type == "MOD_LOG") f.certain = r.hitSlowfiz;
 
@@ -463,9 +438,6 @@ static void DoScan() {
     SaveResult(r);
 }
 
-// ============================================================
-// THEME
-// ============================================================
 static void ApplyTheme() {
     ImGuiStyle& s = ImGui::GetStyle();
     s.WindowRounding = 12; s.ChildRounding = 10; s.FrameRounding = 7;
@@ -515,9 +487,6 @@ static void ApplyTheme() {
     c[ImGuiCol_TableRowBgAlt] = { 0.08f,0.10f,0.14f,0.7f };
 }
 
-// ============================================================
-// UI HELPERS
-// ============================================================
 static void Centered(const char* txt, ImVec4 col, float scale = 1.0f) {
     if (scale != 1) ImGui::SetWindowFontScale(scale);
     float w = ImGui::CalcTextSize(txt).x * scale;
@@ -532,7 +501,6 @@ static void AccentLine() {
         IM_COL32(58, 150, 255, 65), IM_COL32(28, 98, 210, 200));
     ImGui::Dummy({ 0,3 });
 }
-// Full-width button, custom color
 static bool WideBtn(const char* label, ImVec4 col, float h = 40) {
     ImGui::PushStyleColor(ImGuiCol_Button, col);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
@@ -542,15 +510,10 @@ static bool WideBtn(const char* label, ImVec4 col, float h = 40) {
     bool r = ImGui::Button(label, { ImGui::GetContentRegionAvail().x,h });
     ImGui::PopStyleColor(3); return r;
 }
-// Dimmer secondary button
 static bool SecondaryBtn(const char* label, float h = 34) {
     return WideBtn(label, { 0.12f,0.15f,0.20f,1 }, h);
 }
 
-// ============================================================
-// SHARED MODAL FRAME
-// Opens a centered card of given size, returns false if no space
-// ============================================================
 static void BeginCard(float w, float h) {
     ImGuiIO& io = ImGui::GetIO();
     float cx = io.DisplaySize.x * .5f, cy = io.DisplaySize.y * .5f;
@@ -565,7 +528,6 @@ static void EndCard() {
     ImGui::EndChild();
     ImGui::PopStyleVar(); ImGui::PopStyleColor(2);
 }
-// Background fill window
 static bool BeginBG() {
     ImGuiIO& io = ImGui::GetIO();
     ImGui::SetNextWindowPos({ 0,0 }); ImGui::SetNextWindowSize(io.DisplaySize);
@@ -576,14 +538,10 @@ static bool BeginBG() {
 }
 static void EndBG() { ImGui::End(); ImGui::PopStyleColor(); }
 
-// ============================================================
-// SCREEN: TUTORIAL  (3 pages)
-// ============================================================
 static void UI_Tutorial() {
     BeginBG();
     BeginCard(580, 410);
 
-    // Page-indicator dots
     {
         ImDrawList* dl = ImGui::GetWindowDrawList();
         ImVec2 base = ImGui::GetWindowPos();
@@ -643,7 +601,6 @@ static void UI_Tutorial() {
             "your slowfiz.net support ticket for staff review");
     }
 
-    // Navigation buttons at bottom
     float btnY = 410 - 62;
     ImGui::SetCursorPos({ 24,(float)btnY });
     ImGui::PushStyleColor(ImGuiCol_ChildBg, { 0,0,0,0 });
@@ -672,9 +629,6 @@ static void UI_Tutorial() {
     EndCard(); EndBG();
 }
 
-// ============================================================
-// SCREEN: IGN INPUT
-// ============================================================
 static void UI_IGN() {
     BeginBG();
     BeginCard(440, 230);
@@ -703,9 +657,6 @@ static void UI_IGN() {
     EndCard(); EndBG();
 }
 
-// ============================================================
-// SCREEN: RESCAN CODE
-// ============================================================
 static void UI_RescanCode() {
     BeginBG();
     BeginCard(440, 260);
@@ -732,7 +683,6 @@ static void UI_RescanCode() {
     ImGui::Dummy({ 0,6 });
     if (WideBtn("Unlock", Col::BTN) || enter) {
         if (std::string(G.codeInput) == GetDailyCode()) {
-            // Reset for new scan
             G.done = false; G.result = {}; G.log.clear();
             G.prog = 0; G.codeFail = false; G.consented = false;
             memset(G.codeInput, 0, sizeof(G.codeInput));
@@ -750,9 +700,6 @@ static void UI_RescanCode() {
     EndCard(); EndBG();
 }
 
-// ============================================================
-// SCREEN: SCREENSHOT REMINDER
-// ============================================================
 static void UI_Screenshot() {
     BeginBG();
     BeginCard(540, 390);
@@ -771,7 +718,6 @@ static void UI_Screenshot() {
         "slowfiz.net support ticket.");
     ImGui::Dummy({ 0,12 });
 
-    // How-to row
     ImGui::SetCursorPosX(26);
     ImGui::TextColored(Col::DIM, "How to screenshot: ");
     ImGui::SameLine(0, 0); ImGui::TextColored(Col::ACCH, "Win + Shift + S");
@@ -779,7 +725,6 @@ static void UI_Screenshot() {
     ImGui::SameLine(0, 0); ImGui::TextColored(Col::ACCH, "Print Screen");
     ImGui::Dummy({ 0,18 });
 
-    // Verdict reminder box
     {
         auto& r = G.result;
         ImVec4 fc = (r.risk == Risk::EVIDENCE) ? Col::RED :
@@ -805,11 +750,7 @@ static void UI_Screenshot() {
     EndCard(); EndBG();
 }
 
-// ============================================================
-// INNER: SCAN TAB
-// ============================================================
 static void UI_ScanTab() {
-    // Sub-header
     ImGui::PushStyleColor(ImGuiCol_ChildBg, { 0.08f,0.13f,0.22f,0.5f });
     ImGui::BeginChild("##sh", { -1,50 }, false);
     ImGui::Dummy({ 0,5 }); ImGui::SetCursorPosX(14);
@@ -824,7 +765,6 @@ static void UI_ScanTab() {
     ImGui::EndChild(); ImGui::PopStyleColor();
     ImGui::Dummy({ 0,12 });
 
-    // Consent
     ImGui::Checkbox("  I consent to scanning my local Minecraft data", &G.consented);
     ImGui::Dummy({ 0,5 });
     ImGui::TextColored(Col::DIM,
@@ -832,7 +772,6 @@ static void UI_ScanTab() {
         "  •  Prism  •  MultiMC  •  Lunar  •  Badlion");
     ImGui::Dummy({ 0,16 });
 
-    // Big scan button
     bool canScan = G.consented && !G.scanning && !G.done;
     if (!canScan) ImGui::BeginDisabled();
     if (WideBtn(G.scanning ? "  Scanning..." : "  Start Scan", Col::BTN, 46) && canScan) {
@@ -842,7 +781,6 @@ static void UI_ScanTab() {
     }
     if (!canScan) ImGui::EndDisabled();
 
-    // "New scan" link (only after done)
     if (G.done) {
         ImGui::Dummy({ 0,8 });
         const char* lnk = "Request a new scan";
@@ -855,7 +793,6 @@ static void UI_ScanTab() {
 
     ImGui::Dummy({ 0,12 });
 
-    // Progress bar
     if (G.scanning || G.done) {
         ImVec4 pc = (G.done) ? (
             G.result.risk == Risk::EVIDENCE ? Col::RED :
@@ -870,7 +807,6 @@ static void UI_ScanTab() {
         ImGui::Dummy({ 0,6 });
     }
 
-    // Live log
     if (!G.log.empty()) {
         ImGui::PushStyleColor(ImGuiCol_ChildBg, { 0.04f,0.05f,0.06f,1 });
         ImGui::BeginChild("##lg", { -1,ImGui::GetContentRegionAvail().y - 6 }, false);
@@ -890,16 +826,12 @@ static void UI_ScanTab() {
     }
 }
 
-// ============================================================
-// INNER: RESULTS TAB
-// ============================================================
 static void UI_ResultsTab() {
     if (!G.done) {
         ImGui::Dummy({ 0,60 }); Centered("No results yet — run a scan first.", Col::DIM); return;
     }
     auto& r = G.result;
 
-    // Verdict banner
     ImVec4 bg, fg; const char* label; const char* ico;
     switch (r.risk) {
     case Risk::EVIDENCE:
@@ -928,7 +860,6 @@ static void UI_ResultsTab() {
     ImGui::EndChild(); ImGui::PopStyleColor(2);
     ImGui::Dummy({ 0,10 });
 
-    // Stat cards
     float cw = (ImGui::GetContentRegionAvail().x - 26) / 4.0f;
     auto card = [&](const char* id, const char* title, const char* val, ImVec4 vc) {
         ImGui::PushStyleColor(ImGuiCol_ChildBg, Col::CARD);
@@ -953,7 +884,6 @@ static void UI_ResultsTab() {
         r.hitSlowfiz ? Col::RED : Col::GREEN);
     ImGui::Dummy({ 0,8 });
 
-    // Screenshot CTA strip
     ImGui::PushStyleColor(ImGuiCol_ChildBg, { 0.09f,0.13f,0.22f,0.55f });
     ImGui::BeginChild("##cta", { -1,38 }, false);
     ImGui::SetCursorPos({ 12,9 });
@@ -967,7 +897,6 @@ static void UI_ResultsTab() {
     ImGui::EndChild(); ImGui::PopStyleColor();
     ImGui::Dummy({ 0,6 });
 
-    // Findings table
     if (!r.findings.empty()) {
         float th = ImGui::GetContentRegionAvail().y - 6;
         ImGui::PushStyleColor(ImGuiCol_ChildBg, { 0.04f,0.05f,0.06f,1 });
@@ -1003,10 +932,6 @@ static void UI_ResultsTab() {
     }
 }
 
-// ============================================================
-// HIDDEN CONFIG PANEL  (Ctrl+Shift+Alt+C — staff only)
-// Nothing sensitive stored here for users; left for future use
-// ============================================================
 static void UI_HiddenConfig() {
     if (!G.showCfg) return;
     ImGuiIO& io = ImGui::GetIO();
@@ -1019,7 +944,6 @@ static void UI_HiddenConfig() {
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
     AccentLine(); ImGui::Dummy({ 0,8 });
 
-    // Show today's code for staff convenience
     ImGui::Text("Today's rescan code:"); ImGui::SameLine();
     ImGui::TextColored(Col::ACC, "%s", GetDailyCode().c_str());
 
@@ -1032,9 +956,6 @@ static void UI_HiddenConfig() {
     ImGui::End(); ImGui::PopStyleColor();
 }
 
-// ============================================================
-// MAIN WINDOW  (tabs)
-// ============================================================
 static int g_pendingTab = -1;
 
 static void UI_Main() {
@@ -1051,7 +972,6 @@ static void UI_Main() {
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBringToFrontOnFocus |
         ImGuiWindowFlags_NoSavedSettings);
 
-    // Title bar
     ImGui::PushStyleColor(ImGuiCol_ChildBg, { 0.05f,0.07f,0.10f,1 });
     ImGui::BeginChild("##ttb", { -1,42 }, false);
     ImVec2 wp = ImGui::GetWindowPos();
@@ -1067,7 +987,6 @@ static void UI_Main() {
     ImGui::SameLine(0, 16); ImGui::SetCursorPosY(16); ImGui::TextColored(Col::DIM, "slowfiz.net");
     ImGui::EndChild(); ImGui::PopStyleColor();
 
-    // Tab bar
     ImGui::PushStyleColor(ImGuiCol_TabActive, { 0.14f,0.40f,0.86f,1 });
     ImGui::PushStyleColor(ImGuiCol_Tab, { 0.07f,0.09f,0.12f,1 });
     ImGui::PushStyleColor(ImGuiCol_TabHovered, { 0.14f,0.36f,0.76f,0.7f });
@@ -1094,9 +1013,6 @@ static void UI_Main() {
     UI_HiddenConfig();
 }
 
-// ============================================================
-// DIRECTX 11
-// ============================================================
 static ID3D11Device* g_Dev = nullptr;
 static ID3D11DeviceContext* g_Ctx = nullptr;
 static IDXGISwapChain* g_SC = nullptr;
@@ -1142,9 +1058,6 @@ static LRESULT WINAPI WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     return DefWindowProc(h, m, w, l);
 }
 
-// ============================================================
-// ENTRY POINT
-// ============================================================
 int WINAPI WinMain(HINSTANCE hI, HINSTANCE, LPSTR, int) {
     WNDCLASSEX wc{ sizeof(WNDCLASSEX),CS_CLASSDC,WndProc,0,0,hI,
         nullptr,nullptr,nullptr,nullptr,_T("SFScanner"),nullptr };
@@ -1166,7 +1079,6 @@ int WINAPI WinMain(HINSTANCE hI, HINSTANCE, LPSTR, int) {
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_Dev, g_Ctx);
 
-    // If previous scan exists → skip tutorial and go straight to Results
     if (LoadPrevResult()) {
         G.screen = Screen::MAIN;
         g_pendingTab = 1;
